@@ -3,15 +3,14 @@ extends RefCounted
 
 static var texture_cache: Dictionary = {}
 
-static func get_piece_texture(piece_data: PieceData, owner_team: int = Board.WHITE) -> Texture2D:
-	if piece_data == null:
+static func get_piece_texture(piece_obj: BoardPiece) -> Texture2D:
+	if piece_obj == null:
 		return null
 
-	var path = piece_data.get_texture_for_team(owner_team)
+	var path = piece_obj.get_texture()
 	if path != "" and ResourceLoader.exists(path):
 		if not texture_cache.has(path):
-			var tex = load(path) as Texture2D
-			texture_cache[path] = tex
+			texture_cache[path] = load(path) as Texture2D
 		return texture_cache[path]
 
 	return null
@@ -23,23 +22,23 @@ static func draw_pixel_corners(canvas: CanvasItem, rect: Rect2, color: Color, si
 	var t = rect.position.y + 2
 	var b = rect.position.y + rect.size.y - 2
 
-	# Top-Left (Canto Superior Esquerdo)
+	# Top-Left
 	canvas.draw_line(Vector2(l, t), Vector2(l + size_px, t), color, thickness)
 	canvas.draw_line(Vector2(l, t), Vector2(l, t + size_px), color, thickness)
 
-	# Top-Right (Canto Superior Direito)
+	# Top-Right
 	canvas.draw_line(Vector2(r, t), Vector2(r - size_px, t), color, thickness)
 	canvas.draw_line(Vector2(r, t), Vector2(r, t + size_px), color, thickness)
 
-	# Bottom-Left (Canto Inferior Esquerdo)
+	# Bottom-Left
 	canvas.draw_line(Vector2(l, b), Vector2(l + size_px, b), color, thickness)
 	canvas.draw_line(Vector2(l, b), Vector2(l, b - size_px), color, thickness)
 
-	# Bottom-Right (Canto Inferior Direito)
+	# Bottom-Right
 	canvas.draw_line(Vector2(r, b), Vector2(r - size_px, b), color, thickness)
 	canvas.draw_line(Vector2(r, b), Vector2(r, b - size_px), color, thickness)
 
-# 1. VISUAL DA CASA SELECIONADA (Moldura Tática Pulsante)
+# 1. VISUAL DA CASA SELECIONADA
 static func draw_pixel_selected_tile(canvas: CanvasItem, tile_rect: Rect2, pulse: float) -> void:
 	var pad = 2.0
 	var inner_rect = Rect2(tile_rect.position.x + pad, tile_rect.position.y + pad, tile_rect.size.x - pad * 2, tile_rect.size.y - pad * 2)
@@ -111,56 +110,34 @@ static func draw_pixel_move_target(canvas: CanvasItem, dest_rect: Rect2, is_capt
 		canvas.draw_line(left_pt, right_pt, Color(0.75, 1.0, 0.92, 0.9), 1.0)
 		canvas.draw_rect(Rect2(center.x - 1, center.y - 1, 2, 2), Color.WHITE)
 
-# 3. AURA DO COMANDANTE
-static func draw_commander_pixel_aura(canvas: CanvasItem, center: Vector2, radius: float, pulse: float) -> void:
-	var aura_size = radius * pulse * 1.35
-	var aura_rect = Rect2(center.x - aura_size, center.y - aura_size, aura_size * 2, aura_size * 2)
-	var aura_color = Color(1.0, 0.15, 0.25, 0.35 * (pulse - 0.8) * 2.5)
-	canvas.draw_rect(aura_rect, aura_color)
-	draw_pixel_corners(canvas, aura_rect, Color(1.0, 0.2, 0.3, 0.85), 6.0, 2.0)
-
-# 4. RENDERIZAÇÃO DA PEÇA (Totalmente orientada a sprites com fallback geométrico)
+# 3. RENDERIZAÇÃO DA PEÇA
 static func draw_piece(canvas: CanvasItem, piece_obj: BoardPiece, center: Vector2, cell_size: float, scale_factor: float) -> void:
-	var data = piece_obj.data
+	if piece_obj == null:
+		return
+
 	var is_white = (piece_obj.owner_team == Board.WHITE)
-	var tex = get_piece_texture(data, piece_obj.owner_team)
+	var tex = get_piece_texture(piece_obj)
 
 	if tex != null:
 		var dest_size = Vector2(cell_size * 0.82, cell_size * 0.82) * scale_factor
 		var dest_rect = Rect2(center - (dest_size / 2.0), dest_size)
-		
-		# Sombra
 		var shadow_rect = Rect2(dest_rect.position + Vector2(2, 3), dest_size)
 		canvas.draw_texture_rect(tex, shadow_rect, false, Color(0, 0, 0, 0.35))
-		
-		# Sprite com modulação de estado (ex: congelado por teia)
-		var tint = Color.WHITE
-		if data.freeze_turns > 0:
-			tint = Color(0.6, 1.0, 0.7)
-		canvas.draw_texture_rect(tex, dest_rect, false, tint)
+		canvas.draw_texture_rect(tex, dest_rect, false, Color.WHITE)
 	else:
-		# Fallback Procedural de Dama (Sem chamadas a get_icon/fontes)
 		var base_radius = (cell_size * 0.36) * scale_factor
 		var bg_color = Color(0.92, 0.92, 0.95) if is_white else Color(0.18, 0.2, 0.25)
-		
-		if data.color_override != Color.TRANSPARENT:
-			bg_color = data.color_override
-		if data.freeze_turns > 0:
-			bg_color = Color(0.3, 0.85, 0.55)
+		if piece_obj.color_override != Color.TRANSPARENT:
+			bg_color = piece_obj.color_override
 
-		# Sombra
 		canvas.draw_circle(center + Vector2(2, 4), base_radius, Color(0, 0, 0, 0.35))
-		# Base da peça
 		canvas.draw_circle(center, base_radius, bg_color)
-		# Borda
+
 		var border_color = Color(0.15, 0.15, 0.18) if is_white else Color(0.06, 0.06, 0.08)
 		canvas.draw_arc(center, base_radius, 0, TAU, 24, border_color, 2.0)
-
-		# Anel interno de relevo
 		canvas.draw_arc(center, base_radius * 0.65, 0, TAU, 16, border_color, 1.5)
 
-		# Distinção de Dama
-		if data.is_king:
+		if piece_obj.is_king:
 			var crown_col = Color(1.0, 0.84, 0.2) if is_white else Color(0.85, 0.2, 0.25)
 			canvas.draw_circle(center, base_radius * 0.35, crown_col)
 			canvas.draw_arc(center, base_radius * 0.35, 0, TAU, 12, Color(0.1, 0.1, 0.1, 0.8), 1.5)

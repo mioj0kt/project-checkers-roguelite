@@ -3,449 +3,469 @@ extends Control
 
 const MAP_SCENE_PATH = "res://map_view.tscn"
 
-var shop_mgr: ShopManager = ShopManager.new()
-
-var gold_label: Label
-var reroll_btn: Button
-var pieces_container: HBoxContainer
-var packs_container: HBoxContainer
-var tooltip_view: PieceTooltip
+var hud_bar: HUDBar
 var inventory_ui: InventoryUI
+var rule_tooltip: RuleCardTooltip
+var card_tooltip: ActionCardTooltip
 
-# Modal de Abertura de Pacotes (Booster Modal)
-var pack_modal: PanelContainer
-var pack_cards_container: HBoxContainer
-var pack_modal_title: Label
+var laws_for_sale: Array[RuleCard] = []
+var cards_for_sale: Array[ActionCard] = []
 
-var current_shop_pieces: Array[PieceData] = []
-var current_packs: Array[Dictionary] = []
+var laws_container: HBoxContainer
+var cards_container: HBoxContainer
+var reroll_btn: Button
+var remove_card_btn: Button
+
+var card_reroll_cost: int = 2
+var remove_card_cost: int = 3
+
+# Modal de Remoção de Carta
+var remove_modal_layer: CanvasLayer
+var remove_grid: HBoxContainer
 
 func _ready() -> void:
-	# Força o Control raiz a preencher toda a janela
-	set_anchors_preset(Control.PRESET_FULL_RECT)
-	size = get_viewport_rect().size
+	_generate_laws_stock()
+	_reroll_cards_stock()
+	_setup_ui()
 
-	_build_ui()
-	_update_layout()
-	get_tree().root.size_changed.connect(_update_layout)
+func _generate_laws_stock() -> void:
+	laws_for_sale.clear()
+	var owned_rule_ids: Array[String] = []
+	if RunManager != null:
+		for r in RunManager.active_rules:
+			owned_rule_ids.append(r.id)
 
-	shop_mgr.reset_reroll_cost()
-	_refresh_shop_stock()
-	_update_gold_display()
+	laws_for_sale = LootTables.get_random_rules(3, owned_rule_ids)
 
-func _update_layout() -> void:
-	var vp_size = get_viewport_rect().size
-	size = vp_size
+func _reroll_cards_stock() -> void:
+	cards_for_sale = LootTables.get_random_action_cards(3)
 
-	if pack_modal and pack_modal.visible:
-		pack_modal.custom_minimum_size = Vector2(clamp(vp_size.x * 0.75, 600, 780), 340)
-		pack_modal.position = (vp_size - pack_modal.custom_minimum_size) / 2.0
+func _setup_ui() -> void:
+	var canvas = CanvasLayer.new()
+	canvas.name = "ShopUILayer"
+	canvas.layer = 70
+	add_child(canvas)
 
-func _build_ui() -> void:
-	# Fundo da Loja (Preenche toda a tela)
-	var bg = ColorRect.new()
-	bg.color = Color(0.06, 0.07, 0.09, 1.0)
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
+	# Tooltips dedicados
+	rule_tooltip = RuleCardTooltip.new()
+	add_child(rule_tooltip)
 
-	# Container Centralizado com margens confortáveis
-	var center_box = CenterContainer.new()
+	card_tooltip = ActionCardTooltip.new()
+	add_child(card_tooltip)
+
+	hud_bar = HUDBar.new()
+	canvas.add_child(hud_bar)
+	hud_bar.open_laws_requested.connect(_toggle_inventory)
+
+	inventory_ui = InventoryUI.new()
+	canvas.add_child(inventory_ui)
+	inventory_ui.setup()
+
+	# Container principal com Centralização Absoluta
+	var center_box = VBoxContainer.new()
 	center_box.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(center_box)
+	center_box.offset_left = 60.0
+	center_box.offset_right = -60.0
+	center_box.offset_top = 26.0
+	center_box.offset_bottom = -20.0
+	center_box.add_theme_constant_override("separation", 16)
+	center_box.alignment = BoxContainer.ALIGNMENT_BEGIN
+	canvas.add_child(center_box)
 
-	var main_vbox = VBoxContainer.new()
-	main_vbox.custom_minimum_size = Vector2(920, 560)
-	main_vbox.add_theme_constant_override("separation", 18)
-	center_box.add_child(main_vbox)
+	# Cabeçalho Principal
+	var header = Label.new()
+	header.text = "MERCADO DO TABULEIRO"
+	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header.add_theme_font_size_override("font_size", 42)
+	header.add_theme_color_override("font_color", Color(1.0, 0.88, 0.35))
+	header.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.08, 1.0))
+	header.add_theme_constant_override("outline_size", 10)
+	center_box.add_child(header)
 
-	# --- TOP BAR (LOJA, OURO, MOCHILA, SAIR) ---
-	var top_bar = HBoxContainer.new()
-	top_bar.add_theme_constant_override("separation", 20)
-	main_vbox.add_child(top_bar)
+	# -------------------------------------------------------------
+	# SEÇÃO 1: LEIS PERMANENTES
+	# -------------------------------------------------------------
+	var laws_title = Label.new()
+	laws_title.text = "― LEIS PERMANENTES ―"
+	laws_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	laws_title.add_theme_font_size_override("font_size", 24)
+	laws_title.add_theme_color_override("font_color", Color(0.5, 0.82, 1.0))
+	center_box.add_child(laws_title)
 
-	var shop_title = Label.new()
-	shop_title.text = "MERCADO NEGRO"
-	shop_title.add_theme_font_size_override("font_size", 36)
-	shop_title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
-	shop_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top_bar.add_child(shop_title)
+	laws_container = HBoxContainer.new()
+	laws_container.alignment = BoxContainer.ALIGNMENT_CENTER
+	laws_container.add_theme_constant_override("separation", 36)
+	center_box.add_child(laws_container)
+	_render_laws_stock()
 
-	gold_label = Label.new()
-	gold_label.add_theme_font_size_override("font_size", 28)
-	gold_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.35))
-	top_bar.add_child(gold_label)
+	# -------------------------------------------------------------
+	# SEÇÃO 2: CARTAS TÁTICAS + BOTÕES REROLL E REMOVER
+	# -------------------------------------------------------------
+	var cards_header_hbox = HBoxContainer.new()
+	cards_header_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	cards_header_hbox.add_theme_constant_override("separation", 24)
+	center_box.add_child(cards_header_hbox)
 
-	var inv_btn = Button.new()
-	inv_btn.text = "MOCHILA (I)"
-	inv_btn.custom_minimum_size = Vector2(140, 44)
-	inv_btn.add_theme_font_size_override("font_size", 20)
-	inv_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.14, 0.18, 0.26), Color(0.3, 0.6, 1.0)))
-	inv_btn.pressed.connect(func(): inventory_ui.toggle_visibility())
-	top_bar.add_child(inv_btn)
-
-	var leave_btn = Button.new()
-	leave_btn.text = "IR PARA O MAPA ->"
-	leave_btn.custom_minimum_size = Vector2(180, 44)
-	leave_btn.add_theme_font_size_override("font_size", 20)
-	leave_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.2, 0.12, 0.14), Color(0.85, 0.3, 0.35)))
-	leave_btn.pressed.connect(_on_leave_shop)
-	top_bar.add_child(leave_btn)
-
-	# Linha divisória
-	var top_div = ColorRect.new()
-	top_div.custom_minimum_size = Vector2(0, 3)
-	top_div.color = Color(0.25, 0.28, 0.38, 0.9)
-	main_vbox.add_child(top_div)
-
-	# --- CORPO DA LOJA ---
-	var content_hbox = HBoxContainer.new()
-	content_hbox.add_theme_constant_override("separation", 24)
-	content_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	main_vbox.add_child(content_hbox)
-
-	# Coluna Esquerda: Vitrine de Peças e Pacotes
-	var showcase_vbox = VBoxContainer.new()
-	showcase_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	showcase_vbox.add_theme_constant_override("separation", 18)
-	content_hbox.add_child(showcase_vbox)
-
-	# Seção 1: Peças Avulsas
-	var pieces_panel = PanelContainer.new()
-	pieces_panel.add_theme_stylebox_override("panel", PixelUI.make_pixel_panel(Color(0.09, 0.1, 0.15, 0.95), Color(0.3, 0.5, 0.8), 16))
-	showcase_vbox.add_child(pieces_panel)
-
-	var pieces_vbox = VBoxContainer.new()
-	pieces_vbox.add_theme_constant_override("separation", 12)
-	pieces_panel.add_child(pieces_vbox)
-
-	var pieces_lbl = Label.new()
-	pieces_lbl.text = "PECAS DISPONIVEIS"
-	pieces_lbl.add_theme_font_size_override("font_size", 24)
-	pieces_lbl.add_theme_color_override("font_color", Color(0.4, 0.8, 1.0))
-	pieces_vbox.add_child(pieces_lbl)
-
-	pieces_container = HBoxContainer.new()
-	pieces_container.add_theme_constant_override("separation", 16)
-	pieces_vbox.add_child(pieces_container)
-
-	# Seção 2: Pacotes Booster
-	var packs_panel = PanelContainer.new()
-	packs_panel.add_theme_stylebox_override("panel", PixelUI.make_pixel_panel(Color(0.1, 0.09, 0.14, 0.95), Color(0.7, 0.4, 0.9), 16))
-	showcase_vbox.add_child(packs_panel)
-
-	var packs_vbox = VBoxContainer.new()
-	packs_vbox.add_theme_constant_override("separation", 12)
-	packs_panel.add_child(packs_vbox)
-
-	var packs_lbl = Label.new()
-	packs_lbl.text = "PACOTES BOOSTER (ESCOLHA 1 DE 3)"
-	packs_lbl.add_theme_font_size_override("font_size", 24)
-	packs_lbl.add_theme_color_override("font_color", Color(0.85, 0.5, 1.0))
-	packs_vbox.add_child(packs_lbl)
-
-	packs_container = HBoxContainer.new()
-	packs_container.add_theme_constant_override("separation", 16)
-	packs_vbox.add_child(packs_container)
-
-	# Coluna Direita: Painel de Reroll
-	var actions_panel = PanelContainer.new()
-	actions_panel.custom_minimum_size = Vector2(230, 0)
-	actions_panel.add_theme_stylebox_override("panel", PixelUI.make_pixel_panel(Color(0.12, 0.11, 0.14, 0.98), Color(0.6, 0.55, 0.4), 16))
-	content_hbox.add_child(actions_panel)
-
-	var actions_vbox = VBoxContainer.new()
-	actions_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	actions_vbox.add_theme_constant_override("separation", 16)
-	actions_panel.add_child(actions_vbox)
+	var cards_title = Label.new()
+	cards_title.text = "― CARTAS DE AÇÃO (DECK) ―"
+	cards_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cards_title.add_theme_font_size_override("font_size", 24)
+	cards_title.add_theme_color_override("font_color", Color(1.0, 0.65, 0.35))
+	cards_header_hbox.add_child(cards_title)
 
 	reroll_btn = Button.new()
-	reroll_btn.custom_minimum_size = Vector2(190, 68)
-	reroll_btn.add_theme_font_size_override("font_size", 22)
-	reroll_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.2, 0.18, 0.1), Color(1.0, 0.85, 0.3)))
-	reroll_btn.pressed.connect(_on_reroll_pressed)
-	actions_vbox.add_child(reroll_btn)
+	reroll_btn.custom_minimum_size = Vector2(190, 40)
+	reroll_btn.add_theme_font_size_override("font_size", 18)
+	reroll_btn.pressed.connect(_on_reroll_cards_pressed)
+	cards_header_hbox.add_child(reroll_btn)
 
-	var reroll_desc = Label.new()
-	reroll_desc.text = "Substitui todas as pecas por novas ofertas."
-	reroll_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	reroll_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	reroll_desc.add_theme_font_size_override("font_size", 16)
-	reroll_desc.add_theme_color_override("font_color", Color(0.7, 0.7, 0.75))
-	actions_vbox.add_child(reroll_desc)
+	remove_card_btn = Button.new()
+	remove_card_btn.custom_minimum_size = Vector2(230, 40)
+	remove_card_btn.add_theme_font_size_override("font_size", 18)
+	remove_card_btn.pressed.connect(_on_remove_card_clicked)
+	cards_header_hbox.add_child(remove_card_btn)
 
-	# --- MODAL DE ABERTURA DE PACOTE ---
-	_build_pack_opening_modal()
+	_update_header_buttons_state()
 
-	# Mochila e Tooltip
-	inventory_ui = InventoryUI.new()
-	inventory_ui.z_index = 50
-	add_child(inventory_ui)
-	if RunManager != null and RunManager.inventory != null:
-		inventory_ui.setup(RunManager.inventory)
+	cards_container = HBoxContainer.new()
+	cards_container.alignment = BoxContainer.ALIGNMENT_CENTER
+	cards_container.add_theme_constant_override("separation", 32)
+	center_box.add_child(cards_container)
+	_render_cards_stock()
 
-	tooltip_view = PieceTooltip.new()
-	tooltip_view.z_index = 100
-	add_child(tooltip_view)
+	# Rodapé: Botão de saída
+	var footer_box = HBoxContainer.new()
+	footer_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	center_box.add_child(footer_box)
 
-	inventory_ui.piece_inspect_requested.connect(func(p, pos): tooltip_view.show_for_piece(p, pos))
-	inventory_ui.piece_inspect_dismissed.connect(func(): tooltip_view.hide_tooltip())
+	var leave_btn = Button.new()
+	leave_btn.text = "CONTINUAR VIAGEM"
+	leave_btn.custom_minimum_size = Vector2(280, 52)
+	leave_btn.add_theme_font_size_override("font_size", 22)
+	leave_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.12, 0.16, 0.22), Color(0.4, 0.7, 0.9)))
+	leave_btn.add_theme_stylebox_override("hover", PixelUI.make_bevel_card(Color(0.18, 0.24, 0.34), Color(0.6, 0.9, 1.0)))
+	leave_btn.pressed.connect(_on_leave_pressed)
+	footer_box.add_child(leave_btn)
 
-func _build_pack_opening_modal() -> void:
-	pack_modal = PanelContainer.new()
-	pack_modal.visible = false
-	pack_modal.z_index = 60
-	pack_modal.mouse_filter = Control.MOUSE_FILTER_STOP
-	pack_modal.add_theme_stylebox_override("panel", PixelUI.make_pixel_panel(Color(0.08, 0.08, 0.12, 0.98), Color(0.9, 0.7, 0.2), 24))
-	add_child(pack_modal)
+	_build_remove_modal_ui()
 
-	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 20)
-	pack_modal.add_child(vbox)
-
-	pack_modal_title = Label.new()
-	pack_modal_title.text = "ABERTURA DE PACOTE - ESCOLHA 1 PECA"
-	pack_modal_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	pack_modal_title.add_theme_font_size_override("font_size", 28)
-	pack_modal_title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
-	vbox.add_child(pack_modal_title)
-
-	var divider = ColorRect.new()
-	divider.custom_minimum_size = Vector2(0, 3)
-	divider.color = Color(0.3, 0.35, 0.45, 0.9)
-	vbox.add_child(divider)
-
-	pack_cards_container = HBoxContainer.new()
-	pack_cards_container.alignment = BoxContainer.ALIGNMENT_CENTER
-	pack_cards_container.add_theme_constant_override("separation", 24)
-	vbox.add_child(pack_cards_container)
-
-func _update_gold_display() -> void:
-	var g = RunManager.gold if RunManager != null else 0
-	gold_label.text = "OURO: %d" % g
-	reroll_btn.text = "REROLL\n(%d Ouro)" % shop_mgr.current_reroll_cost
-	reroll_btn.disabled = (g < shop_mgr.current_reroll_cost)
-
-func _refresh_shop_stock() -> void:
-	current_shop_pieces.clear()
-	for child in pieces_container.get_children():
+func _render_laws_stock() -> void:
+	for child in laws_container.get_children():
 		child.queue_free()
 
-	for i in range(3):
-		var piece = shop_mgr.generate_random_piece()
-		current_shop_pieces.append(piece)
-		var card = _create_piece_buy_card(piece)
-		pieces_container.add_child(card)
+	for i in range(laws_for_sale.size()):
+		var law = laws_for_sale[i]
+		var law_widget = _create_law_item_ui(law, i)
+		laws_container.add_child(law_widget)
 
-	if current_packs.is_empty():
-		current_packs = shop_mgr.generate_booster_packs()
+func _create_law_item_ui(law: RuleCard, index: int) -> Control:
+	var wrapper = VBoxContainer.new()
+	wrapper.alignment = BoxContainer.ALIGNMENT_CENTER
+	wrapper.add_theme_constant_override("separation", 8)
 
-	for child in packs_container.get_children():
-		child.queue_free()
+	var card_visual = RuleCardVisual.new(law, rule_tooltip, false)
+	wrapper.add_child(card_visual)
 
-	for pack_data in current_packs:
-		var pack_card = _create_pack_buy_card(pack_data)
-		packs_container.add_child(pack_card)
-
-	_update_gold_display()
-
-func _create_piece_buy_card(piece: PieceData) -> PanelContainer:
-	var card = PanelContainer.new()
-	card.custom_minimum_size = Vector2(140, 180)
-	var price = shop_mgr.get_piece_price(piece)
-
-	var r_color = piece.get_rarity_color()
-	card.add_theme_stylebox_override("panel", PixelUI.make_bevel_card(Color(0.12, 0.14, 0.19, 0.96), r_color))
-
-	var vbox = VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 6)
-	card.add_child(vbox)
-
-	var tex = PixelRenderer.get_piece_texture(piece, Board.WHITE)
-	if tex != null:
-		var preview = TextureRect.new()
-		preview.custom_minimum_size = Vector2(48, 48)
-		preview.texture = tex
-		preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		preview.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		vbox.add_child(preview)
-
-	var name_lbl = Label.new()
-	name_lbl.text = piece.name if piece.name != "" else piece.id.capitalize()
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.add_theme_font_size_override("font_size", 20)
-	name_lbl.add_theme_color_override("font_color", piece.get_display_color())
-	vbox.add_child(name_lbl)
-
-	var rarity_lbl = Label.new()
-	rarity_lbl.text = "[%s]" % piece.get_rarity_name().to_upper()
-	rarity_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	rarity_lbl.add_theme_font_size_override("font_size", 16)
-	rarity_lbl.add_theme_color_override("font_color", r_color)
-	vbox.add_child(rarity_lbl)
+	var current_gold = RunManager.gold if RunManager != null else 0
+	var can_afford = current_gold >= law.cost
+	var has_room = RunManager != null and RunManager.active_rules.size() < 6
 
 	var buy_btn = Button.new()
-	buy_btn.text = "%d OURO" % price
-	buy_btn.custom_minimum_size = Vector2(100, 36)
+	buy_btn.custom_minimum_size = Vector2(RuleCardVisual.CARD_SIZE, 42)
+	buy_btn.text = "%d OURO" % law.cost if has_room else "LOTADO (6/6)"
+	buy_btn.disabled = (not can_afford) or (not has_room)
 	buy_btn.add_theme_font_size_override("font_size", 18)
-	buy_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.15, 0.25, 0.18), Color(0.4, 0.9, 0.45)))
-	buy_btn.pressed.connect(func(): _buy_piece(piece, price, card))
-	vbox.add_child(buy_btn)
 
-	card.mouse_entered.connect(func(): tooltip_view.show_for_piece(piece, card.get_global_mouse_position()))
-	card.mouse_exited.connect(func(): tooltip_view.hide_tooltip())
+	if can_afford and has_room:
+		buy_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.12, 0.22, 0.16), Color(0.3, 0.9, 0.4)))
+		buy_btn.add_theme_stylebox_override("hover", PixelUI.make_bevel_card(Color(0.18, 0.30, 0.22), Color(0.5, 1.0, 0.6)))
+		buy_btn.add_theme_color_override("font_color", Color(1.0, 0.95, 0.5))
+	else:
+		buy_btn.add_theme_stylebox_override("disabled", PixelUI.make_bevel_card(Color(0.1, 0.1, 0.12), Color(0.3, 0.3, 0.35)))
+		buy_btn.add_theme_color_override("font_color", Color(0.5, 0.5, 0.55))
 
-	return card
+	buy_btn.pressed.connect(_on_buy_law_pressed.bind(index))
+	wrapper.add_child(buy_btn)
 
-func _create_pack_buy_card(pack: Dictionary) -> PanelContainer:
-	var card = PanelContainer.new()
-	card.custom_minimum_size = Vector2(170, 160)
-	card.add_theme_stylebox_override("panel", PixelUI.make_bevel_card(Color(0.15, 0.12, 0.22, 0.96), Color(0.8, 0.45, 1.0)))
+	card_visual.play_flip_reveal(0.1 + (index * 0.12))
+	return wrapper
 
-	var vbox = VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 6)
-	card.add_child(vbox)
-
-	var name_lbl = Label.new()
-	name_lbl.text = pack["name"]
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.add_theme_font_size_override("font_size", 22)
-	name_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
-	vbox.add_child(name_lbl)
-
-	var desc_lbl = Label.new()
-	desc_lbl.text = pack["desc"]
-	desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc_lbl.add_theme_font_size_override("font_size", 16)
-	desc_lbl.add_theme_color_override("font_color", Color(0.75, 0.75, 0.85))
-	vbox.add_child(desc_lbl)
-
-	var buy_btn = Button.new()
-	buy_btn.text = "%d OURO" % pack["price"]
-	buy_btn.custom_minimum_size = Vector2(120, 36)
-	buy_btn.add_theme_font_size_override("font_size", 18)
-	buy_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.2, 0.15, 0.3), Color(0.8, 0.45, 1.0)))
-	buy_btn.pressed.connect(func(): _buy_booster_pack(pack, card))
-	vbox.add_child(buy_btn)
-
-	return card
-
-func _buy_piece(piece: PieceData, price: int, card_node: Control) -> void:
-	if RunManager == null or not RunManager.spend_gold(price):
-		return
-
-	RunManager.inventory.add_piece_to_inventory(piece)
-	current_shop_pieces.erase(piece)
-	card_node.queue_free()
-	tooltip_view.hide_tooltip()
-	_update_gold_display()
-	if inventory_ui.visible:
-		inventory_ui.refresh_ui()
-
-func _buy_booster_pack(pack: Dictionary, card_node: Control) -> void:
-	if RunManager == null or not RunManager.spend_gold(pack["price"]):
-		return
-
-	current_packs.erase(pack)
-	card_node.queue_free()
-	_update_gold_display()
-	_open_pack_modal(pack["min_rarity"])
-
-func _open_pack_modal(min_rarity: PieceData.Rarity) -> void:
-	for child in pack_cards_container.get_children():
+func _render_cards_stock() -> void:
+	for child in cards_container.get_children():
 		child.queue_free()
 
-	var options: Array[PieceData] = []
-	for i in range(3):
-		options.append(shop_mgr.generate_random_piece(min_rarity))
+	for i in range(cards_for_sale.size()):
+		var card = cards_for_sale[i]
+		var card_widget = _create_action_card_shop_item_ui(card, i)
+		cards_container.add_child(card_widget)
 
-	for piece in options:
-		var card = _create_pack_choice_card(piece)
-		pack_cards_container.add_child(card)
+func _create_action_card_shop_item_ui(card: ActionCard, index: int) -> Control:
+	var wrapper = VBoxContainer.new()
+	wrapper.alignment = BoxContainer.ALIGNMENT_CENTER
+	wrapper.add_theme_constant_override("separation", 8)
 
-	var vp_size = get_viewport_rect().size
-	pack_modal.custom_minimum_size = Vector2(clamp(vp_size.x * 0.75, 600, 780), 340)
-	pack_modal.position = (vp_size - pack_modal.custom_minimum_size) / 2.0
-	pack_modal.visible = true
+	# Card visual com tamanho vertical proporcional (150x220)
+	var card_visual = ActionCardVisual.new(card, true)
+	card_visual.mouse_filter = Control.MOUSE_FILTER_STOP
+	wrapper.add_child(card_visual)
 
-func _create_pack_choice_card(piece: PieceData) -> PanelContainer:
-	var card = PanelContainer.new()
-	card.custom_minimum_size = Vector2(150, 200)
+	# Hover conectado ao ActionCardTooltip
+	card_visual.mouse_entered.connect(func():
+		if card_tooltip:
+			var tip_pos = card_visual.global_position + Vector2(ActionCardVisual.CARD_WIDTH / 2.0, 0.0)
+			card_tooltip.show_tooltip(card, tip_pos)
+	)
+	card_visual.mouse_exited.connect(func():
+		if card_tooltip:
+			card_tooltip.hide_tooltip()
+	)
 
-	var r_color = piece.get_rarity_color()
-	card.add_theme_stylebox_override("panel", PixelUI.make_bevel_card(Color(0.12, 0.14, 0.2, 0.98), r_color))
+	var current_gold = RunManager.gold if RunManager != null else 0
+	var can_afford = current_gold >= card.cost_gold
 
-	var vbox = VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 8)
-	card.add_child(vbox)
+	var buy_btn = Button.new()
+	buy_btn.custom_minimum_size = Vector2(ActionCardVisual.CARD_WIDTH, 42)
+	buy_btn.text = "%d OURO" % card.cost_gold
+	buy_btn.disabled = not can_afford
+	buy_btn.add_theme_font_size_override("font_size", 18)
 
-	var tex = PixelRenderer.get_piece_texture(piece, Board.WHITE)
-	if tex != null:
-		var preview = TextureRect.new()
-		preview.custom_minimum_size = Vector2(56, 56)
-		preview.texture = tex
-		preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		preview.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		vbox.add_child(preview)
+	if can_afford:
+		buy_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.12, 0.22, 0.16), Color(0.3, 0.9, 0.4)))
+		buy_btn.add_theme_stylebox_override("hover", PixelUI.make_bevel_card(Color(0.18, 0.3, 0.22), Color(0.5, 1.0, 0.6)))
+		buy_btn.add_theme_color_override("font_color", Color(1.0, 0.95, 0.5))
+	else:
+		buy_btn.add_theme_stylebox_override("disabled", PixelUI.make_bevel_card(Color(0.1, 0.1, 0.12), Color(0.3, 0.3, 0.35)))
+		buy_btn.add_theme_color_override("font_color", Color(0.5, 0.5, 0.55))
 
-	var name_lbl = Label.new()
-	name_lbl.text = piece.name if piece.name != "" else piece.id.capitalize()
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.add_theme_font_size_override("font_size", 22)
-	name_lbl.add_theme_color_override("font_color", piece.get_display_color())
-	vbox.add_child(name_lbl)
+	buy_btn.pressed.connect(_on_buy_action_card_pressed.bind(index))
+	wrapper.add_child(buy_btn)
 
-	var rarity_lbl = Label.new()
-	rarity_lbl.text = "[%s]" % piece.get_rarity_name().to_upper()
-	rarity_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	rarity_lbl.add_theme_font_size_override("font_size", 18)
-	rarity_lbl.add_theme_color_override("font_color", r_color)
-	vbox.add_child(rarity_lbl)
+	card_visual.play_flip_reveal(0.1 + (index * 0.12))
+	return wrapper
 
-	var choose_btn = Button.new()
-	choose_btn.text = "ESCOLHER"
-	choose_btn.custom_minimum_size = Vector2(110, 40)
-	choose_btn.add_theme_font_size_override("font_size", 18)
-	choose_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.15, 0.3, 0.2), Color(0.3, 0.9, 0.5)))
-	choose_btn.pressed.connect(func(): _choose_pack_piece(piece))
-	vbox.add_child(choose_btn)
+func _update_header_buttons_state() -> void:
+	var current_gold = RunManager.gold if RunManager != null else 0
 
-	card.mouse_entered.connect(func(): tooltip_view.show_for_piece(piece, card.get_global_mouse_position()))
-	card.mouse_exited.connect(func(): tooltip_view.hide_tooltip())
+	# 1. Reroll
+	if reroll_btn != null:
+		var can_reroll = current_gold >= card_reroll_cost
+		reroll_btn.text = "REROLL: %d OURO" % card_reroll_cost
+		reroll_btn.disabled = not can_reroll
+		if can_reroll:
+			reroll_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.2, 0.14, 0.08), Color(1.0, 0.65, 0.2)))
+			reroll_btn.add_theme_stylebox_override("hover", PixelUI.make_bevel_card(Color(0.28, 0.18, 0.1), Color(1.0, 0.8, 0.35)))
+			reroll_btn.add_theme_color_override("font_color", Color(1.0, 0.92, 0.4))
+		else:
+			reroll_btn.add_theme_stylebox_override("disabled", PixelUI.make_bevel_card(Color(0.1, 0.1, 0.12), Color(0.3, 0.3, 0.35)))
+			reroll_btn.add_theme_color_override("font_color", Color(0.5, 0.5, 0.55))
 
-	return card
+	# 2. Remover Carta
+	if remove_card_btn != null:
+		var has_cards = RunManager != null and not RunManager.player_deck.is_empty()
+		var can_remove = current_gold >= remove_card_cost and has_cards
+		remove_card_btn.text = "REMOVER: %d OURO" % remove_card_cost
+		remove_card_btn.disabled = not can_remove
+		if can_remove:
+			remove_card_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.22, 0.08, 0.10), Color(0.95, 0.3, 0.35)))
+			remove_card_btn.add_theme_stylebox_override("hover", PixelUI.make_bevel_card(Color(0.32, 0.12, 0.15), Color(1.0, 0.45, 0.5)))
+			remove_card_btn.add_theme_color_override("font_color", Color(1.0, 0.8, 0.8))
+		else:
+			remove_card_btn.add_theme_stylebox_override("disabled", PixelUI.make_bevel_card(Color(0.1, 0.1, 0.12), Color(0.3, 0.3, 0.35)))
+			remove_card_btn.add_theme_color_override("font_color", Color(0.5, 0.5, 0.55))
 
-func _choose_pack_piece(piece: PieceData) -> void:
-	if RunManager != null and RunManager.inventory != null:
-		RunManager.inventory.add_piece_to_inventory(piece)
+func _on_reroll_cards_pressed() -> void:
+	if RunManager != null and RunManager.gold >= card_reroll_cost:
+		RunManager.gold -= card_reroll_cost
+		card_reroll_cost += 1
+		_reroll_cards_stock()
+		_refresh_store_state()
 
-	pack_modal.visible = false
-	tooltip_view.hide_tooltip()
-	if inventory_ui.visible:
-		inventory_ui.refresh_ui()
-
-func _on_reroll_pressed() -> void:
-	if RunManager == null or not RunManager.spend_gold(shop_mgr.current_reroll_cost):
+func _on_buy_law_pressed(index: int) -> void:
+	if index < 0 or index >= laws_for_sale.size():
 		return
 
-	shop_mgr.increase_reroll_cost()
-	_refresh_shop_stock()
+	var law = laws_for_sale[index]
+	if RunManager != null and RunManager.gold >= law.cost:
+		RunManager.gold -= law.cost
+		RunManager.add_rule(law)
+		laws_for_sale.remove_at(index)
+		_refresh_store_state()
 
-func _on_leave_shop() -> void:
-	get_tree().change_scene_to_file(MAP_SCENE_PATH)
+func _on_buy_action_card_pressed(index: int) -> void:
+	if index < 0 or index >= cards_for_sale.size():
+		return
+
+	var card = cards_for_sale[index]
+	if RunManager != null and RunManager.gold >= card.cost_gold:
+		RunManager.gold -= card.cost_gold
+		RunManager.player_deck.append(card)
+		cards_for_sale.remove_at(index)
+		_refresh_store_state()
+
+func _refresh_store_state() -> void:
+	if card_tooltip:
+		card_tooltip.hide_tooltip()
+	if rule_tooltip:
+		rule_tooltip.hide_tooltip()
+
+	if hud_bar:
+		hud_bar.update_gold()
+		hud_bar.refresh_deck()
+
+	_update_header_buttons_state()
+	_render_laws_stock()
+	_render_cards_stock()
+
+# =============================================================
+# MODAL DE REMOÇÃO DE CARTA (PURGA DE DECK)
+# =============================================================
+func _build_remove_modal_ui() -> void:
+	remove_modal_layer = CanvasLayer.new()
+	remove_modal_layer.layer = 130
+	remove_modal_layer.visible = false
+	add_child(remove_modal_layer)
+
+	var bg = ColorRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(0.04, 0.05, 0.08, 0.90)
+	remove_modal_layer.add_child(bg)
+
+	var center = CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	remove_modal_layer.add_child(center)
+
+	var panel = PanelContainer.new()
+	panel.custom_minimum_size = Vector2(1100, 600)
+	panel.add_theme_stylebox_override("panel", PixelUI.make_pixel_panel(Color(0.08, 0.1, 0.15, 0.98), Color(0.95, 0.35, 0.4), 24))
+	center.add_child(panel)
+
+	var margin = MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 28)
+	margin.add_theme_constant_override("margin_right", 28)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_bottom", 20)
+	panel.add_child(margin)
+
+	var vb = VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 18)
+	margin.add_child(vb)
+
+	var title = Label.new()
+	title.text = "REMOVER UMA CARTA DO DECK"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 36)
+	title.add_theme_color_override("font_color", Color(1.0, 0.88, 0.35))
+	title.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.08, 1.0))
+	title.add_theme_constant_override("outline_size", 8)
+	vb.add_child(title)
+
+	var subtitle = Label.new()
+	subtitle.text = "Selecione a carta que deseja destruir definitivamente do seu baralho:"
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.add_theme_font_size_override("font_size", 18)
+	subtitle.add_theme_color_override("font_color", Color(0.8, 0.85, 0.92))
+	vb.add_child(subtitle)
+
+	var scroll = ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	vb.add_child(scroll)
+
+	var scroll_center = CenterContainer.new()
+	scroll_center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll_center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.add_child(scroll_center)
+
+	remove_grid = HBoxContainer.new()
+	remove_grid.alignment = BoxContainer.ALIGNMENT_CENTER
+	remove_grid.add_theme_constant_override("separation", 24)
+	scroll_center.add_child(remove_grid)
+
+	var cancel_btn = Button.new()
+	cancel_btn.text = "CANCELAR"
+	cancel_btn.custom_minimum_size = Vector2(220, 46)
+	cancel_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	cancel_btn.add_theme_font_size_override("font_size", 20)
+	cancel_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.14, 0.16, 0.20), Color(0.4, 0.45, 0.55)))
+	cancel_btn.pressed.connect(func():
+		remove_modal_layer.visible = false
+		if card_tooltip:
+			card_tooltip.hide_tooltip()
+	)
+	vb.add_child(cancel_btn)
+
+func _on_remove_card_clicked() -> void:
+	if RunManager == null or RunManager.gold < remove_card_cost:
+		return
+
+	for child in remove_grid.get_children():
+		child.queue_free()
+
+	for i in range(RunManager.player_deck.size()):
+		var card = RunManager.player_deck[i]
+		var item = _create_remove_card_slot(card, i)
+		remove_grid.add_child(item)
+
+	remove_modal_layer.visible = true
+
+func _create_remove_card_slot(card: ActionCard, deck_idx: int) -> Control:
+	var wrapper = VBoxContainer.new()
+	wrapper.alignment = BoxContainer.ALIGNMENT_CENTER
+	wrapper.add_theme_constant_override("separation", 10)
+
+	var card_visual = ActionCardVisual.new(card, true)
+	card_visual.mouse_filter = Control.MOUSE_FILTER_STOP
+	wrapper.add_child(card_visual)
+
+	card_visual.mouse_entered.connect(func():
+		if card_tooltip:
+			var tip_pos = card_visual.global_position + Vector2(ActionCardVisual.CARD_WIDTH / 2.0, 0.0)
+			card_tooltip.show_tooltip(card, tip_pos)
+	)
+	card_visual.mouse_exited.connect(func():
+		if card_tooltip:
+			card_tooltip.hide_tooltip()
+	)
+
+	var destroy_btn = Button.new()
+	destroy_btn.text = "DESTRUIR"
+	destroy_btn.custom_minimum_size = Vector2(ActionCardVisual.CARD_WIDTH, 40)
+	destroy_btn.add_theme_font_size_override("font_size", 17)
+	destroy_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.24, 0.08, 0.10), Color(0.95, 0.25, 0.3)))
+	destroy_btn.add_theme_stylebox_override("hover", PixelUI.make_bevel_card(Color(0.36, 0.10, 0.12), Color(1.0, 0.4, 0.45)))
+	destroy_btn.add_theme_color_override("font_color", Color(1.0, 0.9, 0.9))
+
+	destroy_btn.pressed.connect(func():
+		if card_tooltip:
+			card_tooltip.hide_tooltip()
+		RunManager.gold -= remove_card_cost
+		remove_card_cost += 2 # Escala de custo para remoções subsequentes
+		RunManager.player_deck.remove_at(deck_idx)
+		remove_modal_layer.visible = false
+		_refresh_store_state()
+	)
+	wrapper.add_child(destroy_btn)
+
+	return wrapper
+
+func _toggle_inventory() -> void:
+	if inventory_ui:
+		inventory_ui.toggle_visibility()
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_I:
-			inventory_ui.toggle_visibility()
+		if event.keycode == KEY_TAB:
+			_toggle_inventory()
+			get_viewport().set_input_as_handled()
 		elif event.keycode == KEY_ESCAPE:
-			if pack_modal.visible:
-				pass
-			elif inventory_ui.visible:
+			if remove_modal_layer and remove_modal_layer.visible:
+				remove_modal_layer.visible = false
+				if card_tooltip:
+					card_tooltip.hide_tooltip()
+				get_viewport().set_input_as_handled()
+			elif inventory_ui and inventory_ui.visible:
 				inventory_ui.visible = false
-				tooltip_view.hide_tooltip()
+				get_viewport().set_input_as_handled()
+
+func _on_leave_pressed() -> void:
+	get_tree().call_deferred("change_scene_to_file", MAP_SCENE_PATH)

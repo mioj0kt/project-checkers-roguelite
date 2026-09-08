@@ -12,7 +12,7 @@ var toss_scale: float = 1.0
 var piece_texture: Texture2D
 var active_tween: Tween
 
-func play_coronation(screen_pos: Vector2, p_cell_size: float, piece_data: PieceData, owner_team: int) -> void:
+func play_coronation(screen_pos: Vector2, p_cell_size: float, piece: BoardPiece) -> void:
 	if active_tween and active_tween.is_valid():
 		active_tween.kill()
 
@@ -22,16 +22,16 @@ func play_coronation(screen_pos: Vector2, p_cell_size: float, piece_data: PieceD
 	flip_scale_x = 1.0
 	toss_scale = 1.0
 
-	# Pega o sprite da peça já com o estado de Dama
-	piece_texture = PixelRenderer.get_piece_texture(piece_data, owner_team)
+	# Busca o sprite da peça já com a coroa de Dama
+	piece_texture = PixelRenderer.get_piece_texture(piece)
 
 	active_tween = create_tween().set_parallel(true)
 
-	# 1. Elevação / Arco de Pulo (aproxima da câmera)
+	# 1. Elevação / Salto em direção à câmera
 	active_tween.tween_property(self, "toss_scale", 1.6, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	active_tween.tween_property(self, "toss_scale", 1.0, 0.3).set_delay(0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
-	# 2. Rotações 3D Horizontais
+	# 2. Rotação 3D
 	var total_flips = 4
 	for i in range(total_flips):
 		var delay = i * 0.15
@@ -55,15 +55,12 @@ func _draw() -> void:
 
 	var dest_rect = Rect2(anim_pos.x - d_w / 2.0, anim_pos.y - d_h / 2.0, d_w, d_h)
 
-	# 1. Sombra dinâmica projetada no chão
 	var height_factor = (toss_scale - 1.0) / 0.6
 	var shadow_offset = Vector2(2 + height_factor * 8.0, 4 + height_factor * 12.0)
 	var shadow_rect = Rect2(dest_rect.position + shadow_offset, dest_rect.size)
 	draw_texture_rect(piece_texture, shadow_rect, false, Color(0, 0, 0, 0.35))
 
-	# 2. Sprite em Rotação 3D
 	draw_texture_rect(piece_texture, dest_rect, false, Color.WHITE)
 
-	# 3. Cantoneiras Douradas / Aura de Coroação
 	var tile_rect = Rect2(anim_pos.x - cell_size / 2.0, anim_pos.y - cell_size / 2.0, cell_size, cell_size)
 	PixelRenderer.draw_pixel_corners(self, tile_rect, Color(1.0, 0.85, 0.2, 0.9), 8.0, 2.0)

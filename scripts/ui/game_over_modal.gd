@@ -13,7 +13,6 @@ var stats_container: VBoxContainer
 var total_label: Label
 var confirm_btn: Button
 
-# Estrutura dos dados de recompensa
 var reward_data: Dictionary = {}
 
 func _ready() -> void:
@@ -22,7 +21,6 @@ func _ready() -> void:
 	_build_ui()
 
 func _build_ui() -> void:
-	# Fundo Escurecido
 	var bg_overlay = ColorRect.new()
 	bg_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg_overlay.color = Color(0.02, 0.03, 0.05, 0.82)
@@ -94,7 +92,7 @@ func show_game_over(won: bool, rewards: Dictionary = {}, custom_title: String = 
 
 		confirm_btn.text = "CONTINUAR ->"
 		confirm_btn.add_theme_stylebox_override("normal", PixelUI.make_bevel_card(Color(0.12, 0.22, 0.15), Color(0.3, 0.9, 0.45)))
-		confirm_btn.disabled = true # Trava até o final das animações
+		confirm_btn.disabled = true
 		total_label.text = ""
 
 		_run_rewards_animation()
@@ -119,7 +117,6 @@ func _input(event: InputEvent) -> void:
 	if not visible or not is_won_state:
 		return
 
-	# Clique esquerdo para pular animação
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if is_counting and not skip_requested:
 			skip_requested = true
@@ -132,9 +129,6 @@ func _run_rewards_animation() -> void:
 		{"label": "CAPTURAS:", "amount": reward_data.get("captures", 0)},
 		{"label": "SOBREVIVENTES:", "amount": reward_data.get("survival", 0)}
 	]
-
-	if reward_data.get("midas", 0) > 0:
-		rows.append({"label": "TOQUE DE MIDAS:", "amount": reward_data.get("midas", 0)})
 
 	var total_gold_accum = 0
 
@@ -163,21 +157,18 @@ func _run_rewards_animation() -> void:
 		var count: int = item["amount"]
 		total_gold_accum += count
 
-		# Spawna as moedas com aceleração
 		var current_delay = 0.14
 		for c in range(count):
-			var coin = _create_coin_circle()
+			var coin = PixelUI.make_coin_icon(22.0)
 			coins_container.add_child(coin)
 			val_lbl.text = "+%d" % (c + 1)
 
 			if not skip_requested:
-				# Efeito de pop-in na moeda
 				var t = create_tween()
 				coin.scale = Vector2(0.3, 0.3)
 				t.tween_property(coin, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 				await get_tree().create_timer(current_delay).timeout
-				# Acelera progressivamente a cada moeda
 				current_delay = max(0.02, current_delay * 0.88)
 			else:
 				coin.scale = Vector2.ONE
@@ -191,29 +182,6 @@ func _run_rewards_animation() -> void:
 	total_label.text = "TOTAL RECEBIDO: +%d OURO" % reward_data.get("total", total_gold_accum)
 	is_counting = false
 	confirm_btn.disabled = false
-
-# Moeda
-func _create_coin_circle() -> Control:
-	var coin_ctrl = Control.new()
-	coin_ctrl.custom_minimum_size = Vector2(22, 22)
-	coin_ctrl.pivot_offset = Vector2(11, 11)
-
-	var draw_node = Node2D.new()
-	draw_node.draw.connect(func():
-		var center = Vector2(11, 11)
-		# Sombra
-		draw_node.draw_circle(center + Vector2(1, 2), 9.0, Color(0.0, 0.0, 0.0, 0.35))
-		# Borda escura
-		draw_node.draw_circle(center, 9.0, Color(0.45, 0.32, 0.08))
-		# Corpo Dourado
-		draw_node.draw_circle(center, 7.5, Color(1.0, 0.84, 0.2))
-		# Brilho Superior
-		draw_node.draw_circle(center - Vector2(2, 2), 3.0, Color(1.0, 0.95, 0.6, 0.9))
-		# Núcleo
-		draw_node.draw_rect(Rect2(center.x - 2, center.y - 2, 4, 4), Color(0.85, 0.65, 0.15))
-	)
-	coin_ctrl.add_child(draw_node)
-	return coin_ctrl
 
 func _on_confirm_pressed() -> void:
 	if is_counting:

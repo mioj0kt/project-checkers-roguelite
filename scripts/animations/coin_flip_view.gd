@@ -17,8 +17,8 @@ var active_tween: Tween
 var active_timer: SceneTreeTimer
 var result_label: Label
 
-const WHITE_SPRITE_PATH = "res://assets/pieces/white-king.png"
-const BLACK_SPRITE_PATH = "res://assets/pieces/black-king.png"
+const WHITE_SPRITE_PATH = "res://assets/sprites/pieces/white-king.png"
+const BLACK_SPRITE_PATH = "res://assets/sprites/pieces/black-king.png"
 
 var white_texture: Texture2D
 var black_texture: Texture2D

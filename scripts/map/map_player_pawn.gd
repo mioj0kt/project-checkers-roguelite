@@ -12,9 +12,7 @@ var tile_size: float = 64.0
 
 func _ready() -> void:
 	z_index = 30
-	var p_data = PieceData.new()
-	p_data.is_king = true
-	dummy_piece = BoardPiece.new(Board.WHITE, p_data)
+	dummy_piece = BoardPiece.new(Board.WHITE, true)
 
 func set_initial_position(pos: Vector2, p_tile_size: float = 64.0) -> void:
 	tile_size = p_tile_size

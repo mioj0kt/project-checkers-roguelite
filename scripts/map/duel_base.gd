@@ -36,7 +36,6 @@ func requires_full_elimination() -> bool:
 func calculate_reward_gold() -> Dictionary:
 	var base_gold = 5
 	var capture_gold = captures_by_player
-	var midas_gold = 0
 
 	var surviving_pieces = 0
 	for r in range(board.rows):
@@ -44,10 +43,8 @@ func calculate_reward_gold() -> Dictionary:
 			var piece: BoardPiece = board.grid[r][c]
 			if piece != Board.EMPTY and piece.owner_team == human_team:
 				surviving_pieces += 1
-				if piece.data is PieceMidas:
-					midas_gold += piece.data.bounty_gold_accumulated
 
-	var total = base_gold + capture_gold + surviving_pieces + midas_gold
+	var total = base_gold + capture_gold + surviving_pieces
 
 	if RunManager != null:
 		RunManager.add_gold(total)
@@ -56,6 +53,5 @@ func calculate_reward_gold() -> Dictionary:
 		"base": base_gold,
 		"captures": capture_gold,
 		"survival": surviving_pieces,
-		"midas": midas_gold,
 		"total": total
 	}

@@ -1,10 +1,9 @@
 class_name DuelBoss
 extends DuelHard
 
-# --- Chefão #1: O SAPO ---
 var hazard_tiles: Array = []
 const FLIES_PER_TURN: int = 3
-const TURNS_BETWEEN_FLIES: int = 3 # Configurado para 3 turnos
+const TURNS_BETWEEN_FLIES: int = 3
 
 var _turns_since_last_bite: int = 0
 var should_trigger_devour: bool = false
@@ -19,27 +18,9 @@ func setup(p_board: Board, p_human_team: int, p_ai_team: int, p_sudden_death_mgr
 	should_spawn_new_flies = false
 	pending_devour_tiles.clear()
 
-func _roll_modifiers() -> void:
-	hard_modifiers.clear()
-	var boss_compatible_mods = [
-		"ENEMY_KINGS",
-		"EXTRA_PIECES",
-		"THEMED_ARMY"
-	]
-	boss_compatible_mods.shuffle()
-
-	var count = randi_range(1, 2)
-	for i in range(count):
-		hard_modifiers.append(boss_compatible_mods[i])
-
-	if hard_modifiers.has("THEMED_ARMY"):
-		var themes = ["cactus", "spring", "fire", "flying_king", "tank", "ghost", "web", "midas"]
-		themed_piece_type = themes.pick_random()
-
 func apply_board_modifiers() -> void:
-	super.apply_board_modifiers()
 	_roll_fly_tiles()
-	should_spawn_new_flies = true # Libera o pouso inicial no começo da partida
+	should_spawn_new_flies = true
 
 func get_banner_text() -> String:
 	return "CHEFAO: O SAPO DEVORADOR\nA cada 3 turnos, o sapo estica sua lingua nas casas com moscas!\nElimine todo o exercito inimigo para vencer."
@@ -50,11 +31,9 @@ func uses_sudden_death() -> bool:
 func requires_full_elimination() -> bool:
 	return true
 
-# Chamado ao final de cada jogada (Jogador ou IA)
 func on_turn_end(_board: Board) -> void:
 	_turns_since_last_bite += 1
 
-	# Quando atinge o limite de turnos, engatilha o ataque e o novo sorteio
 	if _turns_since_last_bite >= TURNS_BETWEEN_FLIES:
 		should_trigger_devour = true
 		pending_devour_tiles = hazard_tiles.duplicate()

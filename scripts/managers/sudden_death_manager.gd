@@ -37,7 +37,7 @@ func _count_total_kings(board: Board) -> int:
 	for r in range(board.rows):
 		for c in range(board.cols):
 			var p: BoardPiece = board.grid[r][c]
-			if p != Board.EMPTY and p.data and p.data.is_king:
+			if p != Board.EMPTY and p.is_king:
 				kings += 1
 	return kings
 
@@ -57,7 +57,7 @@ func check_conditions(board: Board, human_team: int, ai_team: int) -> void:
 					human_count += 1
 				elif piece.owner_team == ai_team:
 					ai_count += 1
-				if piece.data and piece.data.is_king:
+				if piece.is_king:
 					current_kings += 1
 
 	var new_king_promoted = current_kings > initial_kings_count
@@ -91,7 +91,7 @@ func _resolve_points(board: Board, human_team: int, ai_team: int) -> void:
 		for c in range(board.cols):
 			var piece: BoardPiece = board.grid[r][c]
 			if piece != Board.EMPTY:
-				var val = 3 if (piece.data and piece.data.is_king) else 1
+				var val = 3 if piece.is_king else 1
 				if piece.owner_team == human_team:
 					human_score += val
 				elif piece.owner_team == ai_team:
@@ -105,25 +105,22 @@ func _resolve_points(board: Board, human_team: int, ai_team: int) -> void:
 
 func _draw() -> void:
 	if is_active:
-		var banner_h = 52.0
-		var banner_rect = Rect2(board_offset.x, board_offset.y - banner_h - 12, total_width, banner_h)
+		var banner_h = 50.0
+		# Garante que a borda superior do banner nunca fique menor que 20px da borda da tela
+		var banner_y = max(18.0, board_offset.y - banner_h - 10.0)
+		var banner_rect = Rect2(board_offset.x, banner_y, total_width, banner_h)
 		
-		# 1. Fundo Preto Avermelhado
 		draw_rect(banner_rect, Color(0.08, 0.02, 0.03, 0.96))
 		
-		# 2. Sombra e Borda Chanfrada Vermelha
 		var shadow_rect = Rect2(banner_rect.position + Vector2(2, 3), banner_rect.size)
 		draw_rect(shadow_rect, Color(0, 0, 0, 0.4), false, 2.0)
 		draw_rect(banner_rect, Color(0.9, 0.15, 0.2, 0.95), false, 2.5)
 
-		# 3. Cantoneiras Pixeladas de Alerta
 		PixelRenderer.draw_pixel_corners(self, banner_rect, Color(1.0, 0.4, 0.45, 1.0), 10.0, 2.5)
 
-		# 4. Texto em Caixa Alta com Fonte Ampliada
 		var font = ThemeDB.fallback_font
 		var msg = "MORTE SUBITA: %d TURNOS RESTANTES" % turns_left
-		var text_pos = Vector2(banner_rect.position.x, banner_rect.position.y + 34)
+		var text_pos = Vector2(banner_rect.position.x, banner_rect.position.y + 33)
 
-		# Contorno / Sombra do texto desenhado via draw_string
-		draw_string(font, text_pos + Vector2(2, 2), msg, HORIZONTAL_ALIGNMENT_CENTER, banner_rect.size.x, 26, Color(0.05, 0.05, 0.05, 1.0))
-		draw_string(font, text_pos, msg, HORIZONTAL_ALIGNMENT_CENTER, banner_rect.size.x, 26, Color(1.0, 0.35, 0.35, 1.0))
+		draw_string(font, text_pos + Vector2(2, 2), msg, HORIZONTAL_ALIGNMENT_CENTER, banner_rect.size.x, 24, Color(0.05, 0.05, 0.05, 1.0))
+		draw_string(font, text_pos, msg, HORIZONTAL_ALIGNMENT_CENTER, banner_rect.size.x, 24, Color(1.0, 0.35, 0.35, 1.0))

@@ -1,7 +1,6 @@
 class_name PieceShatterView
 extends Node2D
 
-# Estrutura de cada estilhaço
 class Shard:
 	var texture: AtlasTexture
 	var pos: Vector2
@@ -38,10 +37,10 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func shatter_piece(world_center: Vector2, piece: BoardPiece, cell_size: float) -> void:
-	if piece == null or piece.data == null:
+	if piece == null:
 		return
 
-	var base_tex: Texture2D = PixelRenderer.get_piece_texture(piece.data, piece.owner_team)
+	var base_tex: Texture2D = PixelRenderer.get_piece_texture(piece)
 	if base_tex == null:
 		return
 
@@ -49,19 +48,16 @@ func shatter_piece(world_center: Vector2, piece: BoardPiece, cell_size: float) -
 	var tex_h = base_tex.get_height()
 	var display_size = cell_size * 0.85
 
-	# 1. Ponto de corte central aleatório (não simétrico)
 	var split_x = randf_range(0.35, 0.65) * tex_w
 	var split_y = randf_range(0.35, 0.65) * tex_h
 
-	# 2. Definição dos 4 retângulos com tamanhos desiguais
 	var rects = [
-		Rect2(0, 0, split_x, split_y),                                # Top-Left
-		Rect2(split_x, 0, tex_w - split_x, split_y),                  # Top-Right
-		Rect2(0, split_y, split_x, tex_h - split_y),                  # Bottom-Left
-		Rect2(split_x, split_y, tex_w - split_x, tex_h - split_y)    # Bottom-Right
+		Rect2(0, 0, split_x, split_y),
+		Rect2(split_x, 0, tex_w - split_x, split_y),
+		Rect2(0, split_y, split_x, tex_h - split_y),
+		Rect2(split_x, split_y, tex_w - split_x, tex_h - split_y)
 	]
 
-	# Direções de explosão para cada canto
 	var dir_bases = [
 		Vector2(-1, -1),
 		Vector2(1, -1),
@@ -81,17 +77,14 @@ func shatter_piece(world_center: Vector2, piece: BoardPiece, cell_size: float) -
 		var shard = Shard.new()
 		shard.texture = atlas
 		
-		# Proporção visual na tela
 		var shard_w = (r.size.x / tex_w) * display_size
 		var shard_h = (r.size.y / tex_h) * display_size
 		shard.size = Vector2(shard_w, shard_h)
 
-		# Posição inicial relativa ao centro da peça
 		var offset_x = ((r.position.x + r.size.x / 2.0) / tex_w - 0.5) * display_size
 		var offset_y = ((r.position.y + r.size.y / 2.0) / tex_h - 0.5) * display_size
 		shard.pos = world_center + Vector2(offset_x, offset_y)
 
-		# Vetor de impulso inicial com dispersão aleatória
 		var base_dir = dir_bases[i].normalized()
 		var spread_angle = randf_range(-0.35, 0.35)
 		var launch_dir = base_dir.rotated(spread_angle)

@@ -10,7 +10,7 @@ static func get_best_move(board: Board, depth: int = 4, ai_team: int = Board.BLA
 		return {}
 
 	for move in moves:
-		var sim_board = board.duplicate_board()
+		var sim_board = board.clone()
 		sim_board.make_move(move)
 		
 		var score = minimax(sim_board, depth - 1, -INF, INF, false, ai_team)
@@ -36,7 +36,7 @@ static func minimax(board: Board, depth: int, alpha: float, beta: float, maximiz
 			return -1000.0
 
 		for move in moves:
-			var sim_board = board.duplicate_board()
+			var sim_board = board.clone()
 			sim_board.make_move(move)
 			var eval_score = minimax(sim_board, depth - 1, alpha, beta, false, ai_team)
 			max_eval = max(max_eval, eval_score)
@@ -52,7 +52,7 @@ static func minimax(board: Board, depth: int, alpha: float, beta: float, maximiz
 			return 1000.0
 
 		for move in moves:
-			var sim_board = board.duplicate_board()
+			var sim_board = board.clone()
 			sim_board.make_move(move)
 			var eval_score = minimax(sim_board, depth - 1, alpha, beta, true, ai_team)
 			min_eval = min(min_eval, eval_score)
